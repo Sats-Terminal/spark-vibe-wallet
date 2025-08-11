@@ -1,6 +1,14 @@
 # Spark Wallet Interface
 
-IMPORTANT NOTE: THIS WAS VIBE CODED FOR EASE OF USE AND IS NOT A PRODUCTION READY APPLICATION. THIS WAS MADE FOR FUN. 
+⚠️ IMPORTANT SECURITY DISCLAIMER ⚠️
+
+This application was developed as a proof of concept for ease of use and is NOT PRODUCTION READY. Please be aware of the following:
+
+- This is an experimental interface - use at your own risk
+- ALWAYS backup and securely store your wallet's mnemonic phrase
+- For best security, run this application on your local machine only
+- Never share your mnemonic phrase or private keys with anyone
+- Do not use this wallet for storing large amounts of funds
 
 A modern, user-friendly web interface for interacting with the Spark protocol - a Bitcoin Layer 2 solution for instant, low-cost transactions. Built with Next.js, TypeScript, and the official Spark SDK.
 
