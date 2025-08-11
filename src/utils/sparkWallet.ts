@@ -1,12 +1,55 @@
 import { Bech32mTokenIdentifier, SparkWallet } from "@buildonspark/spark-sdk";
 import * as bip39 from 'bip39';
 
+// Local storage key for mnemonic
+const MNEMONIC_STORAGE_KEY = 'spark_wallet_mnemonic';
+
 // Default mnemonic for demo purposes
 // IMPORTANT: In production, this should be securely managed, not hardcoded
 const DEFAULT_MNEMONIC = "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about";
 
 let walletInstance: SparkWallet | null = null;
 let currentMnemonic: string | null = null;
+
+/**
+ * Store mnemonic in local storage
+ */
+function storeMnemonic(mnemonic: string): void {
+  if (typeof window !== 'undefined') {
+    try {
+      window.localStorage.setItem(MNEMONIC_STORAGE_KEY, mnemonic);
+    } catch (error) {
+      console.warn('Failed to store mnemonic in local storage:', error);
+    }
+  }
+}
+
+/**
+ * Get stored mnemonic from local storage
+ */
+function getStoredMnemonic(): string | null {
+  if (typeof window !== 'undefined') {
+    try {
+      return window.localStorage.getItem(MNEMONIC_STORAGE_KEY);
+    } catch (error) {
+      console.warn('Failed to get mnemonic from local storage:', error);
+    }
+  }
+  return null;
+}
+
+/**
+ * Remove stored mnemonic from local storage
+ */
+function removeStoredMnemonic(): void {
+  if (typeof window !== 'undefined') {
+    try {
+      window.localStorage.removeItem(MNEMONIC_STORAGE_KEY);
+    } catch (error) {
+      console.warn('Failed to remove mnemonic from local storage:', error);
+    }
+  }
+}
 
 export interface TokenBalance {
   amount: string;
@@ -53,11 +96,12 @@ export function validateMnemonic(mnemonic: string): boolean {
 }
 
 /**
- * Clear the current wallet instance
+ * Clear the current wallet instance and stored data
  */
 export function clearWallet(): void {
   walletInstance = null;
   currentMnemonic = null;
+  removeStoredMnemonic();
   console.log("Wallet cleared");
 }
 
@@ -75,8 +119,14 @@ export async function initializeWallet(mnemonicOrSeed?: string): Promise<SparkWa
     return walletInstance;
   }
   
-  // Use provided mnemonic, current mnemonic, or default
-  const seedToUse = mnemonicOrSeed || currentMnemonic || DEFAULT_MNEMONIC;
+  // Use provided mnemonic, stored mnemonic, current mnemonic, or default
+  const storedMnemonic = getStoredMnemonic();
+  const seedToUse = mnemonicOrSeed || storedMnemonic || currentMnemonic || DEFAULT_MNEMONIC;
+  
+  // Store the mnemonic if it's new and valid
+  if (mnemonicOrSeed && validateMnemonic(mnemonicOrSeed)) {
+    storeMnemonic(mnemonicOrSeed);
+  }
 
   try {
     const { wallet, mnemonic } = await SparkWallet.initialize({
@@ -100,7 +150,7 @@ export async function initializeWallet(mnemonicOrSeed?: string): Promise<SparkWa
  * Get the current mnemonic being used
  */
 export function getCurrentMnemonic(): string | null {
-  return currentMnemonic || DEFAULT_MNEMONIC;
+  return currentMnemonic || getStoredMnemonic() || DEFAULT_MNEMONIC;
 }
 
 /**

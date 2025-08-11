@@ -46,7 +46,7 @@ export default function SparkWalletUI() {
   const [balance, setBalance] = useState<number | null>(null);
   const [staticDepositAddress, setStaticDepositAddress] = useState<string>('');
   const [mnemonicInput, setMnemonicInput] = useState<string>('');
-  const [showMnemonic, setShowMnemonic] = useState<boolean>(false);
+  const [showMnemonic, setShowMnemonic] = useState<boolean>(true);
   const [selectedToken, setSelectedToken] = useState<string>('');
   const [loading, setLoading] = useState<{ [key: string]: boolean }>({
     wallet: false,
@@ -316,7 +316,7 @@ export default function SparkWalletUI() {
                 </button>
               </div>
               <p className="text-xs text-gray-500 mt-2">
-                This is stored locally and never sent to any server. For demo, a default mnemonic is loaded.
+                Your mnemonic is stored in your browser's local storage and never sent to any server. Please save it somewhere safe on your computer as well - you'll need it to recover your wallet. Only generate a new mnemonic if you don't already have one. There is a default mnemonic loaded for testing purposes, please generate and replace it with a new one.
               </p>
             </div>
 
