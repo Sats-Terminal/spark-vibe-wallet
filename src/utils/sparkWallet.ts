@@ -1,4 +1,4 @@
-import { SparkWallet } from "@buildonspark/spark-sdk";
+import { Bech32mTokenIdentifier, SparkWallet } from "@buildonspark/spark-sdk";
 import * as bip39 from 'bip39';
 
 // Default mnemonic for demo purposes
@@ -8,6 +8,22 @@ const DEFAULT_MNEMONIC = "abandon abandon abandon abandon abandon abandon abando
 let walletInstance: SparkWallet | null = null;
 let currentMnemonic: string | null = null;
 
+export interface TokenBalance {
+  amount: string;
+  metadata?: {
+    name?: string;
+    symbol?: string;
+    decimals?: number;
+    [key: string]: any;
+  };
+}
+
+export interface TokenTransferParams {
+  tokenIdentifier: Bech32mTokenIdentifier;
+  tokenAmount: bigint;
+  receiverSparkAddress: string;
+}
+
 export interface DepositQuote {
   creditAmountSats: number;
   sspSignature: string;
@@ -16,6 +32,8 @@ export interface DepositQuote {
 export interface WalletInfo {
   sparkAddress: string;
   initialized: boolean;
+  balance: string;
+  tokenBalances: { [tokenId: string]: TokenBalance };
 }
 
 /**
@@ -92,10 +110,22 @@ export async function getWalletInfo(): Promise<WalletInfo> {
   try {
     const wallet = await initializeWallet();
     const sparkAddress = await wallet.getSparkAddress();
+    const balanceInfo = await wallet.getBalance();
+    
+    // Convert token balances from Map to object
+    const tokenBalances: { [tokenId: string]: TokenBalance } = {};
+    balanceInfo.tokenBalances.forEach((value, key) => {
+      tokenBalances[key] = {
+        amount: value.balance.toString(),
+        metadata: value.tokenMetadata
+      };
+    });
     
     return {
       sparkAddress,
       initialized: true,
+      balance: balanceInfo.balance.toString(),
+      tokenBalances,
     };
   } catch (error) {
     console.error("Failed to get wallet info:", error);
@@ -188,19 +218,51 @@ export async function claimStaticDepositWithQuote(transactionId: string): Promis
 /**
  * Get the wallet balance
  */
-export async function getBalance(): Promise<any> {
+export async function getBalance(): Promise<WalletInfo> {
   try {
-    const wallet = await initializeWallet();
-    const balance = await wallet.getBalance();
-    
-    console.log("Current balance:", balance, "sats");
-    return {
-      balance: balance.balance.toString(),
-      tokenBalances: balance.tokenBalances,
-    };
+    return await getWalletInfo();
   } catch (error) {
     console.error("Failed to get balance:", error);
     throw new Error("Failed to get wallet balance");
+  }
+}
+
+/**
+ * Send tokens to a Spark address
+ */
+export async function sendTokens(params: TokenTransferParams): Promise<any> {
+  try {
+    const wallet = await initializeWallet();
+    
+    // Validate the amount
+    if (!params.tokenAmount || params.tokenAmount <= 0) {
+      throw new Error("Token amount must be greater than 0");
+    }
+    
+    // Get current token balance
+    const walletInfo = await getWalletInfo();
+    const tokenBalance = walletInfo.tokenBalances[params.tokenIdentifier];
+    
+    if (!tokenBalance) {
+      throw new Error(`No balance found for token ${params.tokenIdentifier}`);
+    }
+    
+    if (BigInt(tokenBalance.amount) < params.tokenAmount) {
+      throw new Error(`Insufficient token balance. Current balance: ${tokenBalance.amount}, required: ${params.tokenAmount}`);
+    }
+    
+    // Send the tokens
+    const result = await wallet.transferTokens({
+      tokenIdentifier: params.tokenIdentifier,
+      tokenAmount: params.tokenAmount,
+      receiverSparkAddress: params.receiverSparkAddress,
+    });
+    
+    console.log("Token transfer successful:", result);
+    return result;
+  } catch (error) {
+    console.error("Failed to send tokens:", error);
+    throw error;
   }
 }
 
@@ -222,8 +284,8 @@ export async function sendToSparkAddress(
     
     // Check balance first
     const balance = await getBalance();
-    if (balance < amountSats) {
-      throw new Error(`Insufficient balance. Current balance: ${balance} sats, required: ${amountSats} sats`);
+    if (BigInt(balance.balance) < BigInt(amountSats)) {
+      throw new Error(`Insufficient balance. Current balance: ${balance.balance} sats, required: ${amountSats} sats`);
     }
     
     // Send the payment

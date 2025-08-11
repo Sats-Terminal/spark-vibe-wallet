@@ -7,13 +7,17 @@ import {
   generateStaticDepositAddress,
   claimStaticDepositWithQuote,
   sendToSparkAddress,
+  sendTokens,
   getBalance,
   generateRandomMnemonic,
   validateMnemonic,
   clearWallet,
   getCurrentMnemonic,
-  WalletInfo
+  WalletInfo,
+  TokenBalance,
+  TokenTransferParams
 } from '../utils/sparkWallet';
+import { Bech32mTokenIdentifier } from '@buildonspark/spark-sdk';
 
 interface DepositClaimState {
   transactionId: string;
@@ -29,18 +33,28 @@ interface SendState {
   message?: string;
 }
 
+interface TokenSendState {
+  tokenId: string;
+  recipientAddress: string;
+  amount: string;
+  status: 'idle' | 'loading' | 'success' | 'error';
+  message?: string;
+}
+
 export default function SparkWalletUI() {
   const [walletInfo, setWalletInfo] = useState<WalletInfo | null>(null);
   const [balance, setBalance] = useState<number | null>(null);
   const [staticDepositAddress, setStaticDepositAddress] = useState<string>('');
   const [mnemonicInput, setMnemonicInput] = useState<string>('');
   const [showMnemonic, setShowMnemonic] = useState<boolean>(false);
+  const [selectedToken, setSelectedToken] = useState<string>('');
   const [loading, setLoading] = useState<{ [key: string]: boolean }>({
     wallet: false,
     deposit: false,
     claim: false,
     send: false,
     balance: false,
+    token: false,
   });
   const [error, setError] = useState<string>('');
   const [claimState, setClaimState] = useState<DepositClaimState>({
@@ -51,6 +65,12 @@ export default function SparkWalletUI() {
     recipientAddress: '',
     amountSats: '',
     description: '',
+    status: 'idle',
+  });
+  const [tokenSendState, setTokenSendState] = useState<TokenSendState>({
+    tokenId: '',
+    recipientAddress: '',
+    amount: '',
     status: 'idle',
   });
 
@@ -110,12 +130,61 @@ export default function SparkWalletUI() {
     setLoading(prev => ({ ...prev, balance: true }));
     
     try {
-      const currentBalance = await getBalance();
-      setBalance(parseInt(currentBalance.balance));
+      const info = await getBalance();
+      setBalance(parseInt(info.balance));
+      setWalletInfo(info); // Update wallet info to get latest token balances
     } catch (err: any) {
       console.error('Failed to get balance:', err);
     } finally {
       setLoading(prev => ({ ...prev, balance: false }));
+    }
+  };
+
+  const handleSendToken = async () => {
+    if (!tokenSendState.recipientAddress.trim()) {
+      setError('Please enter a recipient address');
+      return;
+    }
+    if (!tokenSendState.amount || parseFloat(tokenSendState.amount) <= 0) {
+      setError('Please enter a valid amount');
+      return;
+    }
+    if (!tokenSendState.tokenId) {
+      setError('Please select a token');
+      return;
+    }
+
+    setLoading(prev => ({ ...prev, token: true }));
+    setError('');
+    setTokenSendState(prev => ({ ...prev, status: 'loading' }));
+    
+    try {
+      const result = await sendTokens({
+        tokenIdentifier: tokenSendState.tokenId as Bech32mTokenIdentifier,
+        tokenAmount: BigInt(tokenSendState.amount),
+        receiverSparkAddress: tokenSendState.recipientAddress,
+      });
+
+      setTokenSendState(prev => ({
+        ...prev,
+        status: 'success',
+        message: 'Token transfer successful!',
+        amount: '',
+        recipientAddress: '',
+      }));
+
+      // Refresh balances after sending
+      await handleGetBalance();
+    } catch (err: any) {
+      setError(err.message || 'Failed to send tokens');
+      setTokenSendState(prev => ({
+        ...prev,
+        status: 'error',
+        message: err.message,
+      }));
+      console.error('Token transfer error:', err);
+    } finally {
+      setLoading(prev => ({ ...prev, token: false }));
     }
   };
 
@@ -183,7 +252,7 @@ export default function SparkWalletUI() {
     try {
       const result = await sendToSparkAddress(
         sendState.recipientAddress,
-        parseInt(sendState.amountSats),
+        Number(sendState.amountSats),
         sendState.description || undefined
       );
       setSendState(prev => ({
@@ -314,24 +383,63 @@ export default function SparkWalletUI() {
                   {walletInfo.initialized ? '✓ Initialized' : 'Not Initialized'}
                 </span>
               </div>
-              <div className="flex items-center justify-between p-3 bg-gray-900/50 rounded-lg">
-                <span className="text-gray-400">Balance:</span>
-                <div className="flex items-center gap-2">
-                  <span className="text-yellow-400 font-semibold">
-                    {loading.balance ? (
-                      <span className="animate-pulse">Loading...</span>
-                    ) : (
-                      balance !== null ? `${balance.toLocaleString()} sats` : '0 sats'
-                    )}
-                  </span>
-                  <button
-                    onClick={handleGetBalance}
-                    disabled={loading.balance}
-                    className="px-2 py-1 bg-gray-700 hover:bg-gray-600 rounded text-xs transition-colors"
-                  >
-                    Refresh
-                  </button>
+              <div className="space-y-3">
+                {/* Bitcoin Balance */}
+                <div className="flex items-center justify-between p-3 bg-gray-900/50 rounded-lg">
+                  <span className="text-gray-400">Bitcoin Balance:</span>
+                  <div className="flex items-center gap-2">
+                    <span className="text-yellow-400 font-semibold">
+                      {loading.balance ? (
+                        <span className="animate-pulse">Loading...</span>
+                      ) : (
+                        balance !== null ? `${balance.toLocaleString()} sats` : '0 sats'
+                      )}
+                    </span>
+                    <button
+                      onClick={handleGetBalance}
+                      disabled={loading.balance}
+                      className="px-2 py-1 bg-gray-700 hover:bg-gray-600 rounded text-xs transition-colors"
+                    >
+                      Refresh
+                    </button>
+                  </div>
                 </div>
+
+                {/* Token Balances */}
+                {walletInfo && Object.entries(walletInfo.tokenBalances).length > 0 && (
+                  <div className="p-3 bg-gray-900/50 rounded-lg">
+                    <h3 className="text-gray-400 mb-3">Token Balances:</h3>
+                    <div className="space-y-2">
+                      {Object.entries(walletInfo.tokenBalances).map(([tokenId, token]) => (
+                        <div key={tokenId} className="flex items-center justify-between p-2 bg-gray-800/50 rounded">
+                          <div className="flex-1">
+                            <p className="text-sm text-blue-300">
+                              {token.metadata?.name || 'Unknown Token'}
+                              {token.metadata?.symbol && ` (${token.metadata.symbol})`}
+                            </p>
+                            <p className="text-xs text-gray-500 truncate" title={tokenId}>
+                              ID: {tokenId}
+                            </p>
+                          </div>
+                          <div className="text-right">
+                            <p className="text-sm text-green-300 font-mono">
+                              {parseFloat(token.amount).toLocaleString()} {token.metadata?.symbol || 'units'}
+                            </p>
+                            <button
+                              onClick={() => {
+                                setSelectedToken(tokenId);
+                                setTokenSendState(prev => ({ ...prev, tokenId }));
+                              }}
+                              className="text-xs px-2 py-1 bg-purple-600 hover:bg-purple-700 rounded transition-colors"
+                            >
+                              Send
+                            </button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </div>
               <div className="p-3 bg-gray-900/50 rounded-lg">
                 <p className="text-gray-400 mb-2">Spark Address:</p>
@@ -404,6 +512,107 @@ export default function SparkWalletUI() {
             )}
           </button>
         </div>
+
+        {/* Token Send Card */}
+        {selectedToken && (
+          <div className="mb-8 p-6 bg-gray-800/50 backdrop-blur-sm rounded-xl border border-gray-700 shadow-xl">
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-2xl font-semibold text-purple-300">Send Token</h2>
+              <button
+                onClick={() => {
+                  setSelectedToken('');
+                  setTokenSendState({
+                    tokenId: '',
+                    recipientAddress: '',
+                    amount: '',
+                    status: 'idle',
+                  });
+                }}
+                className="text-gray-400 hover:text-gray-300"
+              >
+                ✕ Close
+              </button>
+            </div>
+
+            <div className="space-y-4">
+              {walletInfo?.tokenBalances[selectedToken] && (
+                <div className="p-3 bg-gray-900/50 rounded-lg">
+                  <p className="text-sm text-gray-400">Selected Token:</p>
+                  <p className="text-lg font-semibold text-blue-300">
+                    {walletInfo.tokenBalances[selectedToken].metadata?.name || 'Unknown Token'}
+                    {walletInfo.tokenBalances[selectedToken].metadata?.symbol && 
+                      ` (${walletInfo.tokenBalances[selectedToken].metadata?.symbol})`}
+                  </p>
+                  <p className="text-sm text-gray-500 break-all mt-1">
+                    ID: {selectedToken}
+                  </p>
+                  <p className="text-sm text-green-300 mt-2">
+                    Available Balance: {parseFloat(walletInfo.tokenBalances[selectedToken].amount).toLocaleString()} 
+                    {walletInfo.tokenBalances[selectedToken].metadata?.symbol ? 
+                      ` ${walletInfo.tokenBalances[selectedToken].metadata.symbol}` : ' units'}
+                  </p>
+                </div>
+              )}
+
+              <div>
+                <label className="block text-gray-400 mb-2">Recipient Spark Address:</label>
+                <input
+                  type="text"
+                  value={tokenSendState.recipientAddress}
+                  onChange={(e) => setTokenSendState(prev => ({ ...prev, recipientAddress: e.target.value }))}
+                  placeholder="Enter recipient's Spark address"
+                  className="w-full px-4 py-3 bg-gray-900/50 border border-gray-600 rounded-lg text-white placeholder-gray-500 focus:border-purple-500 focus:outline-none focus:ring-2 focus:ring-purple-500/20"
+                />
+              </div>
+
+              <div>
+                <label className="block text-gray-400 mb-2">Amount:</label>
+                <input
+                  type="number"
+                  value={tokenSendState.amount}
+                  onChange={(e) => setTokenSendState(prev => ({ ...prev, amount: e.target.value }))}
+                  placeholder="Enter amount to send"
+                  min="0"
+                  step="any"
+                  className="w-full px-4 py-3 bg-gray-900/50 border border-gray-600 rounded-lg text-white placeholder-gray-500 focus:border-purple-500 focus:outline-none focus:ring-2 focus:ring-purple-500/20"
+                />
+              </div>
+
+              {tokenSendState.status === 'success' && (
+                <div className="p-4 bg-green-500/20 border border-green-500 rounded-lg text-green-200">
+                  <p className="font-semibold">Success!</p>
+                  <p className="text-sm mt-1">{tokenSendState.message}</p>
+                </div>
+              )}
+
+              {tokenSendState.status === 'error' && (
+                <div className="p-4 bg-red-500/20 border border-red-500 rounded-lg text-red-200">
+                  <p className="font-semibold">Failed to Send</p>
+                  <p className="text-sm mt-1">{tokenSendState.message}</p>
+                </div>
+              )}
+
+              <button
+                onClick={handleSendToken}
+                disabled={loading.token || !tokenSendState.recipientAddress.trim() || !tokenSendState.amount || parseFloat(tokenSendState.amount) <= 0}
+                className={`w-full px-6 py-3 rounded-lg font-semibold transition-all shadow-lg ${
+                  loading.token || !tokenSendState.recipientAddress.trim() || !tokenSendState.amount || parseFloat(tokenSendState.amount) <= 0
+                    ? 'bg-gray-600 cursor-not-allowed opacity-50'
+                    : 'bg-purple-600 hover:bg-purple-700 hover:shadow-xl'
+                }`}
+              >
+                {loading.token ? (
+                  <span className="flex items-center justify-center">
+                    <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white mr-2"></div>
+                    Sending Tokens...
+                  </span>
+                ) : (
+                  'Send Tokens'
+                )}
+              </button>
+            </div>
+          </div>
+        )}
 
         {/* Send to Spark Address Card */}
         <div className="mb-8 p-6 bg-gray-800/50 backdrop-blur-sm rounded-xl border border-gray-700 shadow-xl">
