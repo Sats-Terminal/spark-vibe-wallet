@@ -1,17 +1,41 @@
 {
-  "name": "spark",
-  "version": "0.1.0",
-  "private": true,
+  "name": "spark-wallet-interface",
+  "version": "1.0.0",
+  "description": "A modern web interface for interacting with the Spark protocol - Bitcoin Layer 2 solution",
+  "author": "Spark Wallet Contributors",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/yourusername/spark-wallet.git"
+  },
+  "keywords": [
+    "spark",
+    "bitcoin",
+    "layer2",
+    "wallet",
+    "cryptocurrency",
+    "blockchain",
+    "nextjs",
+    "typescript"
+  ],
+  "private": false,
   "scripts": {
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "next lint"
+    "lint": "next lint",
+    "type-check": "tsc --noEmit",
+    "format": "prettier --write \"src/**/*.{ts,tsx,js,jsx,json,md}\"",
+    "clean": "rm -rf .next out node_modules",
+    "reinstall": "npm run clean && npm install"
   },
   "dependencies": {
+    "@buildonspark/spark-sdk": "^0.2.7",
+    "@types/bip39": "^3.0.4",
+    "bip39": "^3.1.0",
+    "next": "14.2.24",
     "react": "^18",
-    "react-dom": "^18",
-    "next": "14.2.24"
+    "react-dom": "^18"
   },
   "devDependencies": {
     "typescript": "^5",
